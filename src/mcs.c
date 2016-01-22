@@ -24,9 +24,6 @@
 #include <stdio.h>
 #include <errno.h>
 
-#include "internal/parlib.h"
-#include "parlib.h"
-#include "atomic.h"
 #include "mcs.h"
 
 // MCS locks
@@ -79,27 +76,34 @@ void mcs_pdr_init(struct mcs_pdr_lock *pdr_lock)
 	memset(pdr_lock, 0, sizeof(mcs_lock_t));
 }
 
-void EXPORT_SYMBOL mcs_pdr_lock(struct mcs_pdr_lock *pdr_lock,
+void mcs_pdr_lock(struct mcs_pdr_lock *pdr_lock,
                                 struct mcs_lock_qnode *qnode)
 {
-	if (!in_vcore_context() && current_uthread)
-		uth_disable_notifs();
+	//if (!in_vcore_context() && current_uthread)
+	//	uth_disable_notifs();
 	mcs_lock_lock((struct mcs_lock *)pdr_lock, qnode);
 }
 
 void mcs_pdr_unlock(struct mcs_pdr_lock *pdr_lock, struct mcs_lock_qnode *qnode)
 {
 	mcs_lock_unlock((struct mcs_lock *)pdr_lock, qnode);
-	if (!in_vcore_context() && current_uthread)
-		uth_enable_notifs();
+	//if (!in_vcore_context() && current_uthread)
+	//	uth_enable_notifs();
 }
 
 // MCS dissemination barrier!
 void mcs_barrier_init(mcs_barrier_t* b, size_t np)
 {
-	assert(np <= max_vcores());
-	b->allnodes = parlib_aligned_alloc(ARCH_CL_SIZE,
-	                  np*sizeof(mcs_dissem_flags_t));
+
+	//assert(np <= max_vcores());
+	if (posix_memalign((void **)&b->allnodes, 
+					   CACHE_LINE_SIZE, 
+					   np*sizeof(mcs_dissem_flags_t))){
+		abort();
+	}
+	//b->allnodes = parlib_aligned_alloc(CACHE_LINE_SIZE,
+	//                  np*sizeof(mcs_dissem_flags_t));
+
 	memset(b->allnodes,0,np*sizeof(mcs_dissem_flags_t));
 	b->nprocs = np;
 
@@ -120,6 +124,7 @@ void mcs_barrier_init(mcs_barrier_t* b, size_t np)
 			b->allnodes[i].partnerflags[1][k] = &b->allnodes[j].myflags[1][k];
 		} 
 	}
+
 }
 
 void mcs_barrier_wait(mcs_barrier_t* b, size_t pid)
@@ -133,22 +138,8 @@ void mcs_barrier_wait(mcs_barrier_t* b, size_t pid)
 	}
 	if(localflags->parity)
 		localflags->sense = 1-localflags->sense;
+
 	localflags->parity = 1-localflags->parity;
 }
 
-#undef mcs_lock_init
-#undef mcs_pdr_init
-#undef mcs_lock_lock
-#undef mcs_lock_unlock
-//#undef mcs_pdr_lock
-#undef mcs_pdr_unlock
-#undef mcs_barrier_init
-#undef mcs_barrier_wait
-EXPORT_ALIAS(INTERNAL(mcs_lock_init), mcs_lock_init)
-EXPORT_ALIAS(INTERNAL(mcs_pdr_init), mcs_pdr_init)
-EXPORT_ALIAS(INTERNAL(mcs_lock_lock), mcs_lock_lock)
-EXPORT_ALIAS(INTERNAL(mcs_lock_unlock), mcs_lock_unlock)
-//EXPORT_ALIAS(INTERNAL(mcs_pdr_lock), mcs_pdr_lock)
-EXPORT_ALIAS(INTERNAL(mcs_pdr_unlock), mcs_pdr_unlock)
-EXPORT_ALIAS(INTERNAL(mcs_barrier_init), mcs_barrier_init)
-EXPORT_ALIAS(INTERNAL(mcs_barrier_wait), mcs_barrier_wait)
+
